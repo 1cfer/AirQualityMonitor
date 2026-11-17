@@ -1,260 +1,216 @@
 #include "DisplayManager.h"
-
 #include <Adafruit_SSD1306.h>
 #include <WiFi.h>
-
+#include <math.h>
 #include "AppConfig.h"
-#include "SensorManager.h"
+#include "FirmwareInfo.h"
 #include "StateMachine.h"
 #include "WiFiManager.h"
+#include "SensorManager.h"
+#include "Telemetry.h"
 
 extern Adafruit_SSD1306 display;
 extern StateMachine stateMachine;
-extern WiFiManager wifiManager;
+bool displayReady = false;
 
-const char* categoriaPm25(uint16_t pm25) {
-  if (pm25 <= 12) return "Buena";
-  if (pm25 <= 35) return "Moderada";
-  if (pm25 <= 55) return "Danina (sensib.)";
-  if (pm25 <= 150) return "Danina";
-  if (pm25 <= 250) return "Muy danina";
-  return "Peligrosa";
+static String clipped(String text, unsigned limit = 21) {
+    if (text.length() > limit) text = text.substring(0, limit - 1) + "~";
+    return text;
 }
 
-// Barra horizontal con etiqueta y valor. maxScale define el 100% de la barra.
-void drawBar(int y, const char* label, uint16_t value, uint16_t maxScale) {
-  display.setCursor(0, y);
-  display.print(label);
-
-  int barX = 34;
-  int barWidth = 70;
-  int barHeight = 7;
-
-  display.drawRect(barX, y - 1, barWidth, barHeight, SSD1306_WHITE);
-  int fillWidth = map(min(value, maxScale), 0, maxScale, 0, barWidth - 2);
-  if (fillWidth > 0) {
-    display.fillRect(barX + 1, y, fillWidth, barHeight - 2, SSD1306_WHITE);
-  }
-
-  display.setCursor(barX + barWidth + 4, y);
-  display.print(value);
+static void line(int y, const String& text) {
+    display.setTextSize(1);
+    display.setCursor(0, y);
+    display.print(clipped(text));
 }
 
-// Carita simple según categoría: feliz / neutral / triste
-void drawFace(int cx, int cy, int r, uint16_t pm25) {
-  display.drawCircle(cx, cy, r, SSD1306_WHITE);
-
-  // Ojos
-  display.fillCircle(cx - r / 2, cy - r / 3, 2, SSD1306_WHITE);
-  display.fillCircle(cx + r / 2, cy - r / 3, 2, SSD1306_WHITE);
-
-  // Boca según nivel: buena=sonrisa, moderada=neutral, mala=triste
-  if (pm25 <= 12) {
-    display.drawLine(cx - r / 2, cy + r / 3, cx, cy + r / 2, SSD1306_WHITE);
-    display.drawLine(cx, cy + r / 2, cx + r / 2, cy + r / 3, SSD1306_WHITE);
-  } else if (pm25 <= 35) {
-    display.drawLine(cx - r / 2, cy + r / 2, cx + r / 2, cy + r / 2, SSD1306_WHITE);
-  } else {
-    display.drawLine(cx - r / 2, cy + r / 2, cx, cy + r / 3, SSD1306_WHITE);
-    display.drawLine(cx, cy + r / 3, cx + r / 2, cy + r / 2, SSD1306_WHITE);
-  }
+static void header(const char* title, int page = -1) {
+    display.clearDisplay();
+    display.setTextWrap(false);
+    display.fillRect(0, 0, 128, 11, SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_BLACK);
+    display.setCursor(2, 2);
+    display.print(clipped(title, 13));
+    display.setCursor(86, 2);
+    if (page >= 0) {
+        String status = WiFi.status() == WL_CONNECTED ? "W " : "- ";
+        status += telemetry.busy() ? "TX" : telemetry.lastCode >= 200 && telemetry.lastCode < 300 ? "OK" : telemetry.lastCode ? "!!" : "--";
+        status += " " + String(page + 1);
+        display.print(status);
+    } else display.print(WiFi.status() == WL_CONNECTED ? "WiFi" : "--");
+    display.setTextColor(SSD1306_WHITE);
 }
 
+void setDisplayPower(bool enabled) {
+    if (!displayReady) return;
+    display.ssd1306_command(enabled ? SSD1306_DISPLAYON : SSD1306_DISPLAYOFF);
+}
+
+void identifyDisplay(bool enabled) {
+    if (displayReady) display.invertDisplay(enabled);
+}
+
+void displaySplash() {
+    if (!displayReady) return;
+    display.clearDisplay();
+    display.setTextWrap(false);
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(3);
+    display.setCursor(28, 2);
+    display.print("TARS");
+    line(33, appConfig.hostname);
+    line(50, String("FW ") + TARS_FIRMWARE_VERSION);
+    display.display();
+}
+
+static bool fresh() {
+    return sensorManager.hasValidReading() && sensorManager.isAirQualityOk() &&
+        sensorManager.ageMs() <= max(10000UL, appConfig.intervaloLectura * 3);
+}
+static String pm(uint16_t value) { return fresh() ? String(value) : "--"; }
+static void footer() {
+    if (!sensorManager.hasValidReading()) line(56, "Sin lectura valida");
+    else if (!fresh()) line(56, "Sin sensor - " + String(sensorManager.ageMs() / 1000) + "s");
+    else if (stateMachine.flags.dev) line(56, "Abriendo panel...");
+    else line(56, "Hace " + String(sensorManager.ageMs() / 1000) + "s  Clic:pagina");
+}
+static uint16_t historyValue(int i) {
+    int count = sensorManager.getPm25HistoryCount();
+    int size = sensorManager.getPm25HistorySize();
+    int start = (sensorManager.getPm25HistoryIndex() + size - count) % size;
+    return sensorManager.getPm25History()[(start + i) % size];
+}
 void updateDisplay() {
-  if (!stateMachine.isDisplayOn) return;
-
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-
-  displayStateInfo("LECTURA");
-
-  switch (stateMachine.screenMode) {
-    case 0: {  // Calidad de aire — barras
-      display.setTextSize(1);
-      display.setCursor(0, 13);
-      display.println("CALIDAD DE AIRE");
-
-      drawBar(26, "PM1.0", stateMachine.sensors.pm1_0, 150);
-      drawBar(40, "PM2.5", stateMachine.sensors.pm2_5, 150);
-      drawBar(54, "PM10 ", stateMachine.sensors.pm10, 150);
-      break;
-    }
-
-    case 1: {  // PM2.5 + carita
-      display.setTextSize(1);
-      display.setCursor(0, 13);
-      display.print("PM2.5:");
-
-      display.setTextSize(2);
-      display.setCursor(0, 24);
-      display.print(stateMachine.sensors.pm2_5);
-      display.setTextSize(1);
-      display.print(" ug/m3");
-
-      drawFace(100, 40, 14, stateMachine.sensors.pm2_5);
-
-      display.setCursor(0, 55);
-      display.print(categoriaPm25(stateMachine.sensors.pm2_5));
-      break;
-    }
-
-    case 2: {  // Stats del intervalo actual (reset con cada envío)
-      display.setTextSize(1);
-      display.setCursor(0, 13);
-      display.println("INTERVALO ACTUAL");
-      display.drawLine(0, 21, 128, 21, SSD1306_WHITE);
-
-      display.setCursor(0, 25);
-      display.print("Min:  ");
-      display.print(sensorManager.getMinPm2_5());
-      display.println(" ug/m3");
-
-      display.setCursor(0, 36);
-      display.print("Max:  ");
-      display.print(sensorManager.getMaxPm2_5());
-      display.println(" ug/m3");
-
-      display.setCursor(0, 47);
-      display.print("Muestras: ");
-      display.println(sensorManager.getSampleCount());
-
-      unsigned long restante = 0;
-      if (stateMachine.clocks.proximo_envio > stateMachine.clocks.tiempo_actual) {
-        restante = (stateMachine.clocks.proximo_envio - stateMachine.clocks.tiempo_actual) / 1000;
-      }
-      display.setCursor(0, 57);
-      display.print("Prox. envio: ");
-      display.print(restante);
-      display.println("s");
-      break;
-    }
-
-    case 3: {  // Tendencia — sparkline
-      display.setTextSize(1);
-      display.setCursor(0, 13);
-      display.println("TENDENCIA PM2.5");
-
-      int graphX = 0, graphY = 24, graphW = 128, graphH = 34;
-      display.drawRect(graphX, graphY, graphW, graphH, SSD1306_WHITE);
-
-      int count = sensorManager.getPm25HistoryCount();
-      if (count >= 2) {
-        const uint16_t* hist = sensorManager.getPm25History();
-        int size = sensorManager.getPm25HistorySize();
-        int startIdx = sensorManager.getPm25HistoryIndex();  // más antiguo si buffer lleno
-
-        uint16_t maxVal = 1;
-        for (int i = 0; i < count; i++) {
-          int idx = (startIdx + i) % size;
-          if (hist[idx] > maxVal) maxVal = hist[idx];
+    if (!displayReady || !stateMachine.isDisplayOn) return;
+    auto s = stateMachine.sensors;
+    int page = stateMachine.screenMode;
+    switch (page) {
+    case 0:
+        header("PM2.5", page);
+        display.setTextSize(3); display.setCursor(0, 19); display.print(pm(s.pm2_5));
+        display.setTextSize(1); display.setCursor(96, 33); display.print("ug/m3");
+        line(46, "PM1 " + pm(s.pm1_0) + "  PM10 " + pm(s.pm10));
+        footer(); break;
+    case 1: {
+        header("PM ug/m3", page);
+        const char* names[] = {"PM1.0", "PM2.5", "PM10"};
+        uint16_t values[] = {s.pm1_0, s.pm2_5, s.pm10};
+        for (int i = 0; i < 3; ++i) {
+            line(23 + 16 * i, names[i]);
+            display.setTextSize(2); display.setCursor(68, 16 + 16 * i); display.print(pm(values[i]));
         }
-
-        int prevX = -1, prevY = -1;
-        for (int i = 0; i < count; i++) {
-          int idx = (startIdx + (size - count) + i) % size;
-          int x = graphX + (i * (graphW - 2)) / max(count - 1, 1) + 1;
-          int y = graphY + graphH - 2 - map(hist[idx], 0, maxVal, 0, graphH - 4);
-          if (prevX >= 0) display.drawLine(prevX, prevY, x, y, SSD1306_WHITE);
-          prevX = x;
-          prevY = y;
+        break;
+    }
+    case 2: {
+        header("TENDENCIA", page);
+        int count = sensorManager.getPm25HistoryCount();
+        if (count < 2) { line(24, "Reuniendo muestras"); footer(); break; }
+        uint16_t peak = 1;
+        for (int i = 0; i < count; ++i) peak = max(peak, historyValue(i));
+        line(18, "PM2.5  max " + String(peak));
+        display.drawRect(0, 29, 128, 24, SSD1306_WHITE);
+        int px = 1, py = 51 - uint32_t(historyValue(0)) * 21 / peak;
+        for (int i = 1; i < count; ++i) {
+            int x = 1 + i * 125 / (count - 1);
+            int y = 51 - uint32_t(historyValue(i)) * 21 / peak;
+            display.drawLine(px, py, x, y, SSD1306_WHITE); px = x; py = y;
         }
-      }
-      break;
+        line(56, String(count) + " lecturas  ug/m3"); break;
     }
-
-    case 4: {  // Red WiFi
-      display.setTextSize(1);
-      display.setCursor(0, 13);
-      display.println("RED WIFI");
-      display.drawLine(0, 21, 128, 21, SSD1306_WHITE);
-
-      display.setCursor(0, 25);
-      display.print("SSID: ");
-      if (WiFi.status() == WL_CONNECTED) {
-        String ssid = WiFi.SSID();
-        if (ssid.length() > 14) ssid = ssid.substring(0, 14);
-        display.println(ssid);
-      } else {
-        display.println("Desconectado");
-      }
-
-      display.setCursor(0, 36);
-      display.print("RSSI: ");
-      display.print(WiFi.RSSI());
-      display.println(" dBm");
-
-      display.setCursor(0, 47);
-      display.print("Host: ");
-      display.println(appConfig.hostname);
-      break;
+    case 3: {
+        header("RESUMEN PM2.5", page);
+        int count = sensorManager.getPm25HistoryCount();
+        if (!count) { line(24, "Sin muestras"); footer(); break; }
+        uint16_t lo = UINT16_MAX, hi = 0; uint32_t sum = 0;
+        for (int i = 0; i < count; ++i) {
+            uint16_t v = historyValue(i); lo = min(lo, v); hi = max(hi, v); sum += v;
+        }
+        line(18, "Min " + String(lo) + "  Max " + String(hi));
+        line(30, "Media " + String(sum / count) + " ug/m3");
+        line(42, "Ultimas " + String(count) + " lecturas");
+        footer(); break;
     }
-  }
-
-  display.display();
+    default:
+        header("RED / ENVIO", 4);
+        line(18, WiFi.status() == WL_CONNECTED ? WiFi.SSID() : "Sin WiFi");
+        line(30, "IP:" + wifiManager.getIP());
+        line(42, "OK:" + String(telemetry.sent) + " Error:" + String(telemetry.failed));
+        if (telemetry.busy()) line(56, "Enviando en fondo");
+        else if (!telemetry.ready()) line(56, "Sin tarea de red");
+        else if (!telemetry.lastCode) line(56, "Sin envios aun");
+        else if (telemetry.lastCode == -1002) line(56, "Fallo autenticacion");
+        else if (telemetry.lastCode == -1003) line(56, "URL no valida");
+        else line(56, "HTTP:" + String(telemetry.lastCode));
+        break;
+    }
+    display.display();
 }
 
 void displayStateInfo(const char* estado) {
-  display.setTextSize(1);
-  display.setCursor(0, 0);
-  display.print("Estado: ");
-  display.println(estado);
-  display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
+    if (!displayReady) return;
+    header("ESTADO");
+    line(22, estado);
+    line(44, "IP: " + wifiManager.getIP());
+    display.display();
 }
 
 void displayDeveloperInfo() {
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(1);
+    if (!displayReady) return;
+    header("CONFIGURACION");
+    line(14, appConfig.hostname);
+    bool apActive = (WiFi.getMode() & WIFI_AP) != 0;
+    line(24, apActive ? "AP:" + WiFi.softAPIP().toString() : "IP:" + wifiManager.getIP());
+    if (apActive) line(34, WiFi.softAPSSID());
+    else if (WiFi.status() == WL_CONNECTED) line(34, "Red:" + WiFi.SSID());
+    else line(34, "Sin conexion WiFi");
+    line(44, "Clic: buscar redes");
+    line(54, "4s: volver a medir");
+    display.display();
+}
 
-  display.setCursor(0, 0);
-  display.println("DESARROLLADOR");
-  display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
+void displayWiFiList(int selected, int offset, int total) {
+    if (!displayReady) return;
+    header("REDES WIFI");
+    if (total <= 0) {
+        line(24, "No se hallaron redes");
+        line(48, "Doble clic: volver");
+    }
+    for (int i = 0; i < 3 && i + offset < total; ++i) {
+        int index = i + offset;
+        String ssid = WiFi.SSID(index);
+        bool locked = WiFi.encryptionType(index) != WIFI_AUTH_OPEN;
+        bool saved = locked ? wifiManager.hasPasswordFor(ssid) : wifiManager.hasCredentialsFor(ssid);
+        String row = index == selected ? ">" : " ";
+        row += locked ? "C" : "A";
+        row += saved ? "* " : "  ";
+        line(14 + i * 10, row + clipped(ssid, 17));
+    }
+    if (total > 0) {
+        line(46, "A:libre C:clave *=G");
+        line(56, "4s:elegir 2x:volver");
+    }
+    display.display();
+}
 
-  display.setCursor(0, 12);
-  display.print("IP:");
-  display.println(wifiManager.getIP());
+void displayAPAlert(const String& ssid) {
+    if (!displayReady) return;
+    header("RED CON CLAVE");
+    line(14, ssid.length() ? ssid : "Configurar WiFi");
+    line(24, "Clave no guardada");
+    line(34, "AP:" + WiFi.softAPSSID());
+    line(44, "AP clave:12345678");
+    line(54, "192.168.4.1");
+    display.display();
+}
 
-  display.setCursor(0, 22);
-  if (WiFi.status() == WL_CONNECTED) {
-    display.print("Red:");
-    String ssid = WiFi.SSID();
-    if (ssid.length() > 17) ssid = ssid.substring(0, 17);
-    display.println(ssid);
-  } else if (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA) {
-    display.print("AP:");
-    String apName = "TARS-" + appConfig.hostname;
-    if (apName.length() > 18) apName = apName.substring(0, 18);
-    display.println(apName);
-  } else {
-    display.println("Sin conexion");
-  }
-
-  display.setCursor(0, 32);
-  display.print("Key:");
-  display.print(appConfig.skipToken ? "OFF" : "ON ");
-  display.print(" E:");
-  if (appConfig.intervaloEnvio >= 60000) {
-    display.print(appConfig.intervaloEnvio / 60000);
-    display.println("m");
-  } else {
-    display.print(appConfig.intervaloEnvio / 1000);
-    display.println("s");
-  }
-
-  display.drawLine(0, 41, 128, 41, SSD1306_WHITE);
-
-  display.setCursor(0, 44);
-  String hostLine = appConfig.hostname;
-  if (hostLine.length() > 15) hostLine = hostLine.substring(0, 15);
-  display.print(hostLine);
-  display.println(".local");
-
-  display.setCursor(0, 54);
-  display.print("RSSI:");
-  display.print(WiFi.RSSI());
-  display.print("dBm Heap:");
-  display.print(ESP.getFreeHeap() / 1024);
-  display.println("K");
-
-  display.display();
+void displayWiFiConnection(const String& ssid, int status) {
+    if (!displayReady) return;
+    header(status == 0 ? "CONECTANDO" : "RED WIFI");
+    line(16, ssid);
+    line(28, status == 0 ? "Espere hasta 12 s" : status > 0 ? "Conectado" : "No se pudo conectar");
+    if (status > 0) line(40, "IP:" + wifiManager.getIP());
+    else if (status < 0) line(40, "Revise clave / senal");
+    line(54, status == 0 ? "2x:cancelar" : "Clic:volver 4s:medir");
+    display.display();
 }

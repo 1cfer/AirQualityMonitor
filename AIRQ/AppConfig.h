@@ -11,7 +11,7 @@ class AppConfig {
  public:
   // ===== CONFIGURACION DE ENVIO DE DATOS (ORION) =====
   String serverUrl = "http://10.38.35.216:1026/v2/entities/tarsdev/attrs";
-  String hostname = "tars-new";  // Default genérico, se configura en primer boot
+  String hostname = "tars-new";  // Default genÃ©rico, se configura en primer boot
   unsigned long intervaloEnvio = 15000;
   unsigned long intervaloLectura = 2000;
   unsigned long intervaloReintento = 20000;
@@ -38,9 +38,9 @@ class AppConfig {
     serverUrl = prefs.getString("serverUrl", serverUrl.c_str());
     hostname = prefs.getString("hostname", hostname.c_str());
     intervaloEnvio = prefs.getULong("intervaloEnvio", intervaloEnvio);
-    intervaloLectura = prefs.getULong("intervaloLectura", intervaloLectura);
-    intervaloReintento = prefs.getULong("intervaloReintento", intervaloReintento);
-    tiempoInactividad = prefs.getULong("tiempoInactividad", tiempoInactividad);
+    intervaloLectura = prefs.getULong("readMs", intervaloLectura);
+    intervaloReintento = prefs.getULong("retryMs", intervaloReintento);
+    tiempoInactividad = prefs.getULong("screenMs", tiempoInactividad);
 
     tokenUrl = prefs.getString("tokenUrl", tokenUrl.c_str());
     clientId = prefs.getString("clientId", clientId.c_str());
@@ -52,6 +52,10 @@ class AppConfig {
     agentUrl = prefs.getString("agentUrl", agentUrl.c_str());
     useAgent = prefs.getBool("useAgent", useAgent);
     prefs.end();
+    intervaloEnvio = constrain(intervaloEnvio, 10000UL, 86400000UL);
+    intervaloLectura = constrain(intervaloLectura, 500UL, 60000UL);
+    intervaloReintento = constrain(intervaloReintento, 10000UL, 86400000UL);
+    tiempoInactividad = constrain(tiempoInactividad, 10000UL, 86400000UL);
 
     Serial.println("[AppConfig] Configuracion cargada:");
     Serial.printf("  isConfigured: %s\n", isConfigured ? "true" : "false");
@@ -66,13 +70,13 @@ class AppConfig {
 
   void save() {
     prefs.begin("appconfig", false);
-    prefs.putBool("isConfigured", true);  // Si se guarda config, ya está configurado
+    prefs.putBool("isConfigured", true);  // Si se guarda config, ya estÃ¡ configurado
     prefs.putString("serverUrl", serverUrl.c_str());
     prefs.putString("hostname", hostname.c_str());
     prefs.putULong("intervaloEnvio", intervaloEnvio);
-    prefs.putULong("intervaloLectura", intervaloLectura);
-    prefs.putULong("intervaloReintento", intervaloReintento);
-    prefs.putULong("tiempoInactividad", tiempoInactividad);
+    prefs.putULong("readMs", intervaloLectura);
+    prefs.putULong("retryMs", intervaloReintento);
+    prefs.putULong("screenMs", tiempoInactividad);
 
     prefs.putString("tokenUrl", tokenUrl.c_str());
     prefs.putString("clientId", clientId.c_str());

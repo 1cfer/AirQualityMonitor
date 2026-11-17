@@ -1,0 +1,5 @@
+PASS: native integration tests, production C++ including developer portal, real worker thread and ArduinoJson.
+No compiler warnings.
+PASS: node --check for panel JavaScript.
+PASS: git diff --check.
+Not tested on physical ESP32.

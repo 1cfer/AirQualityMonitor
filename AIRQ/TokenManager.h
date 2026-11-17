@@ -5,41 +5,66 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
-#include "AppConfig.h"
+#include "NetworkSettings.h"
+#include "HttpTransport.h"
 
 class TokenManager {
  private:
   String token;
-  unsigned long tokenExpiry = 0;
+  unsigned long tokenAcquiredMs = 0;
+  unsigned long tokenTtlMs = 0;
+
+  static String formEncode(const String& value) {
+    String out;
+    const char* hex = "0123456789ABCDEF";
+    for (size_t i = 0; i < value.length(); ++i) {
+      uint8_t c = value[i];
+      if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') out += char(c);
+      else { out += '%'; out += hex[c >> 4]; out += hex[c & 15]; }
+    }
+    return out;
+  }
 
  public:
-  // Metodo para solicitar el token
-  bool requestToken() {
+  bool requestToken(const NetworkSettings& config) {
     if (WiFi.status() != WL_CONNECTED) {
       Serial.println("[TokenManager] Sin WiFi, no se puede pedir token");
       return false;
     }
 
-    // Iniciamos el cliente HTTP para solicitar el token por medio de la url configurada desde la web
+    // 1. Blindaje de RAM: Evitar colapso si la memoria libre es muy baja
+    uint32_t freeMem = ESP.getFreeHeap();
+    if (freeMem < 25000) {
+      Serial.printf("[TokenManager] Heap critico (%lu bytes). Postergando solicitud.\n", (unsigned long)freeMem);
+      return false;
+    }
+
+    WiFiClient plain;
+    WiFiClientSecure client;
+
     HTTPClient http;
-    http.begin(appConfig.tokenUrl);
+    http.setTimeout(10000); // Timeout estricto de 10s para evitar cuelgues
+
+    Serial.println("[TokenManager] Solicitando nuevo token a Keyrock...");
+    Serial.printf("[TokenManager] URL: %s\n", config.tokenUrl.c_str());
+
+    if (!beginHttp(http, plain, client, config.tokenUrl)) {
+      Serial.println("[TokenManager] Error al iniciar conexion con Keyrock");
+      client.stop();
+      return false;
+    }
+
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
-    // Construimos el cuerpo de la solicitud del token, segun la documentacion de fiware este es la forma 2 de solicitar el token y es con las credenciales en el body
-    // Si ya el servidor quedaria alojado en internet hay que cambiar a la forma 1 por seguridad, que es con las credenciales del client codificadas en base64 en el
-    // header
     String body = "grant_type=password";
-    body += "&username=" + appConfig.keyrockUser;
-    body += "&password=" + appConfig.keyrockPass;
-    body += "&client_id=" + appConfig.clientId;
-    body += "&client_secret=" + appConfig.clientSecret;
+    body += "&username=" + formEncode(config.keyrockUser);
+    body += "&password=" + formEncode(config.keyrockPass);
+    body += "&client_id=" + formEncode(config.clientId);
+    body += "&client_secret=" + formEncode(config.clientSecret);
 
-    Serial.println("[TokenManager] Solicitando token...");
-    Serial.printf("[TokenManager] URL: %s\n", appConfig.tokenUrl.c_str());
-    Serial.printf("[TokenManager] Usuario: %s\n", appConfig.keyrockUser.c_str());
-
-    // Enviamos la solicitud POST para obtener el token
     int httpCode = http.POST(body);
 
     if (httpCode >= 200 && httpCode < 300) {
@@ -47,50 +72,58 @@ class TokenManager {
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, response);
 
-      if (!error && doc.containsKey("access_token")) {
+      if (!error && doc["access_token"].is<String>() &&
+          doc["access_token"].as<String>().length() > 0 &&
+          (!doc["expires_in"].isNull() && doc["expires_in"].is<unsigned long>() &&
+           doc["expires_in"].as<unsigned long>() > 0 &&
+           doc["expires_in"].as<unsigned long>() <= 86400UL)) {
         token = doc["access_token"].as<String>();
-        unsigned long expiresIn = doc["expires_in"] | 3600;
+        unsigned long expiresIn = doc["expires_in"].as<unsigned long>();
 
-        // Renovamos el token 60 segundos antes para no enviar con un token muerto
-        tokenExpiry = millis() + (expiresIn - 60) * 1000;
+        // Renueva un 10% antes, con margen mÃ¡ximo de 600 s y sin underflow.
+        unsigned long safetyMargin = min(600UL, expiresIn / 10);
+        tokenTtlMs = (expiresIn - safetyMargin) * 1000UL;
+        tokenAcquiredMs = millis();
 
-        Serial.printf("[TokenManager] Token obtenido! Expira en %lu segundos", expiresIn);
-        Serial.printf("[TokenManager] Token: %s...\n", token.substring(0, 20).c_str());
+        Serial.printf("[TokenManager] Token obtenido! TTL util: %lu s (Margen: %lu s)\n",
+                      tokenTtlMs / 1000, safetyMargin);
         http.end();
+        client.stop();
         return true;
       } else {
-        Serial.println("[TokenManager] Error al parsear respuesta del token");
-        Serial.println(response);
+        Serial.println("[TokenManager] Error al parsear respuesta JSON");
       }
     } else {
-      Serial.printf("[TokenManager] Error HTTP: %d\n", httpCode);
-      Serial.println(http.getString());
+      Serial.printf("[TokenManager] Error HTTP al pedir token: %d\n", httpCode);
     }
 
     http.end();
+    client.stop();
     return false;
   }
 
-  // Metodo para verificar si el token es valido y renovarlo si no lo es
-  bool ensureValidToken() {
-    if (token.length() > 0 && millis() < tokenExpiry) {
-      return true;
-    }
-    Serial.println("[TokenManager] Token expirado o no existe, renovando...");
-    return requestToken();
+  // Verifica validez evitando errores por desbordamiento de millis()
+  bool hasToken() {
+    if (token.length() == 0) return false;
+    return (millis() - tokenAcquiredMs) < tokenTtlMs;
   }
 
-  // Metodo para obtener el token
+  bool ensureValidToken(const NetworkSettings& config) {
+    if (hasToken()) {
+      return true;
+    }
+    Serial.println("[TokenManager] Token expirado o ausente. Solicitando renovacion...");
+    return requestToken(config);
+  }
+
   String getToken() { return token; }
 
-  // Metodo para verificar si el token es valido sin pedir nuevo
-  bool hasToken() { return token.length() > 0 && millis() < tokenExpiry; }
-
-  // Metodo para limpiar el token manualmente, se creo para la web de desarrollador para forzar la renovación del token
+  // Invalida el token inmediatamente ante un HTTP 401 / 403 / 302
   void clear() {
     token = "";
-    tokenExpiry = 0;
-    Serial.println("[TokenManager] Token limpiado");
+    tokenAcquiredMs = 0;
+    tokenTtlMs = 0;
+    Serial.println("[TokenManager] Token invalidado manualmente.");
   }
 };
 
