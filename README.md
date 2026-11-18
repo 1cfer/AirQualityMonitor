@@ -1,6 +1,6 @@
 # TARS Air — Monitor de partículas ESP32
 
-Firmware `air-2.0.0`, para OLED SSD1306 de 128×64 y DFRobot SEN0460. Las lecturas, el botón y la pantalla continúan funcionando durante los envíos HTTP y la renovación de token.
+Firmware `air-2.0.1`, para OLED SSD1306 de 128×64 y DFRobot SEN0460. Las lecturas, el botón y la pantalla continúan funcionando durante los envíos HTTP y la renovación de token.
 
 La adaptación parte de AirQualityMonitor `ad2e966729484bbfcd78002a9edf2e34b3f3933e` y toma el modo desarrollador de TARS legacy 1.1.1 (`cd431c317d2fc669f05a1d15c6a4492e21a24b9c`). Detalles y validación: [REVISION.md](REVISION.md).
 
@@ -37,7 +37,7 @@ El panel/OTA local conserva el acceso sin autenticación de la base legacy y HTT
 
 ## Binario listo para OTA
 
-[Descargar air-2.0.0 para ESP32-WROOM-DA](https://raw.githubusercontent.com/1cfer/AirQualityMonitor/main/firmware/AirQualityMonitor_air-2.0.0_ESP32DA.bin) · [Instrucciones y SHA-256](firmware/README.md)
+[Descargar air-2.0.1 para ESP32-WROOM-DA](https://raw.githubusercontent.com/1cfer/AirQualityMonitor/main/firmware/AirQualityMonitor_air-2.0.1_ESP32DA.bin) · [Instrucciones y SHA-256](firmware/README.md)
 
 Binario de aplicación para el panel OTA, compilado para `esp32:esp32:esp32da` y una partición de 1.310.720 bytes. Para otra placa o partición, compilar el sketch con su configuración.
 
@@ -54,7 +54,7 @@ No hace falta instalar DFRobot_AirQualitySensor: el pequeño lector I2C incluido
 |---|---|
 | SSD1306 128×64 | I2C 0x3C o 0x3D, SDA21/SCL22 |
 | SEN0460 | I2C 0x19, SDA21/SCL22 |
-| Botón | GPIO4 a GND, pull-up interno |
+| Botón | GPIO27 a GND, pull-up interno |
 
 ## Arquitectura
 

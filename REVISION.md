@@ -42,7 +42,7 @@ Las vistas previas son renderizados del framebuffer de las pruebas, no fotograf�
 
 ## Límites prácticos
 
-No se ha cargado ni probado este firmware en un ESP32 físico. Comprobar sensor SEN0460, OLED 128×64, botón GPIO4, desconexión/reconexión WiFi, destino real y actualización OTA en hardware. La prueba con hilo nativo no sustituye la validación del planificador FreeRTOS y del consumo de pila en el ESP32.
+No se ha cargado ni probado este firmware en un ESP32 físico. Comprobar sensor SEN0460, OLED 128×64, botón GPIO27, desconexión/reconexión WiFi, destino real y actualización OTA en hardware. La prueba con hilo nativo no sustituye la validación del planificador FreeRTOS y del consumo de pila en el ESP32.
 
 Los lotes pendientes están en RAM; se pierden al reiniciar. La reducción de peso conserva un promedio acotado, no un archivo histórico exacto de duración ilimitada. El gráfico cuenta lecturas válidas; los intervalos perdidos no se representan como puntos con fecha. El sensor usa su escala STANDARD heredada; esta revisión no valida una calibración ambiental ni calcula un AQI oficial.
 
@@ -53,3 +53,9 @@ El acceso local al panel y OTA sigue sin autenticación; el AP conserva la clave
 - [Registros y protocolo SEN0460 del fabricante](https://github.com/DFRobot/DFRobot_AirQualitySensor).
 - [Ejemplo oficial de colas FreeRTOS de Espressif](https://github.com/espressif/arduino-esp32/tree/master/libraries/ESP32/examples/FreeRTOS/Queue).
 - Código y revisión de TARS legacy 1.1.1 verificados en la ruta local indicada por el usuario.
+
+## air-2.0.1 — GPIO27 confirmado por el propietario
+
+El boton del montaje real esta conectado a GPIO27, no GPIO4. Se cambia unicamente BUTTON_PIN a 27 y la identificacion de firmware a air-2.0.1. El sensor desconectado explicaba la ausencia de lecturas; no se cambian el lector I2C, sus tiempos ni la logica del boton. El fallo de envio reportado como HTTP:-1 se revisara por separado; esta revision conserva el transporte y Keyrock sin cambios.
+
+Compilacion air-2.0.1: salida 0, sin advertencias; flash 1186940 bytes, RAM estatica 53720 bytes. Se verificaron las 24 fuentes contra las copias compiladas. Binario de aplicacion OTA: 1187088 bytes. GPIO27 confirmado por el propietario; pendiente comprobar el boton en el equipo fisico tras cargarlo.

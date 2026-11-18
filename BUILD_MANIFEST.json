@@ -1,5 +1,5 @@
 {
-  "firmware": "air-2.0.0",
+  "firmware": "air-2.0.1",
   "baseCommit": "ad2e966729484bbfcd78002a9edf2e34b3f3933e",
   "tarsReferenceCommit": "cd431c317d2fc669f05a1d15c6a4492e21a24b9c",
   "fqbn": "esp32:esp32:esp32da",
@@ -34,9 +34,9 @@
   ],
   "comparison": "Ignoring trailing whitespace, blank lines, Arduino line directives and generated setup/loop/stack-size prototypes",
   "hardwareTested": false,
-  "binarySha256": "3c957fc8ce1ccbad7d3b325dc8776c45f11b97fa4bed7a0e3e808ceb3b7ad1bd",
+  "binarySha256": "1016a94232a335cc24cf26e054de63b46bb85468d4ac12884990cf2436a1d8ea",
   "sourceSha256": {
-    "AIRQ.ino": "c871087a6c481d801abde13de6d4b3501e0635791150286590c73bbd476651b6",
+    "AIRQ.ino": "68897548021679e524b3aefda4e278c1db943b440fbe738fcc2a96e04f2c4b7e",
     "AppConfig.h": "d5dbb6d8a63cac0f1e2eb2ae69a9858a83dd2e7f0c4184f483ddb10da7516af7",
     "ButtonHandler.h": "2b905767874ca841360cac19596c04ea65d2a7155b2fc9a69330be5459714ce2",
     "DevWebOTA.cpp": "2eb88c082df952a4634ecb61851ef2921725ed1c85dcf300268f79b656451283",
@@ -45,7 +45,7 @@
     "DisplayManager.h": "dee9f698e843d07a752760afa454cf135124f4fe1e887a9287b5af46be6a3240",
     "Estados.cpp": "be0c5618bef359d7b40cebbadb2f419a6497d866959bf1fcaf205ed25cb607da",
     "Estados.h": "81e5c26fe241830ca4065a6fa66d07eaee13eb03d7bebfeb3dc78348483a3c6c",
-    "FirmwareInfo.h": "2788c8d4ab950416509ce50f5a7c116c0397c08caf5fd5725f758bc33d5b7361",
+    "FirmwareInfo.h": "a17412fb29d90cae6c130006c6f072ee0bc3f6fb8e6c079d273463247e671644",
     "HttpTransport.h": "a4d58bd6f0edb4fd0d4f6168e426366313213421fde3db4496ee5acbb87724ee",
     "Measurement.h": "3958a0b8f1fadfd99d06c51bc54285c82cf97f1880872d3d634cd02a6568726c",
     "NetworkSettings.h": "b9c5ed782b43e60088c27577eb6a7fb2255354aa83121a942ce9af899e1234b2",
@@ -61,5 +61,7 @@
     "TokenManager.h": "98d64dae9e55d05cf7cf675a739264bf16686bda473969b9798a4d07f93d626c",
     "WiFiManager.h": "6ef292b4011dcd79dda9d96e20724f600a3cfb446f0564241ee35dc336d74b3c"
   },
-  "binaryPath": "firmware/AirQualityMonitor_air-2.0.0_ESP32DA.bin"
+  "binaryPath": "firmware/AirQualityMonitor_air-2.0.1_ESP32DA.bin",
+  "previousPublishedCommit": "c379a2e76415c3b5cd0e63c39af56501a7c3dabb",
+  "buttonGpio": 27
 }
