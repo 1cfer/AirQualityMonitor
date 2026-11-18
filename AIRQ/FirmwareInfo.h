@@ -1,2 +1,2 @@
 #pragma once
-#define TARS_FIRMWARE_VERSION "air-2.0.1"
+#define TARS_FIRMWARE_VERSION "air-2.0.2"

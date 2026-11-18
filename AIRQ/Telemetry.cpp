@@ -46,18 +46,46 @@ void Telemetry::poll() {
     stateMachine.needsUpdate = true;
     Serial.printf("[ENVIO] HTTP %d; OK %lu; fallos %lu\n", lastCode, (unsigned long)sent, (unsigned long)failed);
 }
+static int sendRequest(const NetworkSettings& c, TokenManager& tokens,
+                       const String& url, const String& payload, bool post) {
+    WiFiClient plain; WiFiClientSecure secure; HTTPClient http;
+    if (!beginHttp(http, plain, secure, url)) return -1003;
+    http.addHeader("Content-Type", "application/json");
+    if (!c.useAgent && !c.skipToken) http.addHeader("Authorization", "Bearer " + tokens.getToken());
+    int code = post ? http.POST(payload) : http.PATCH(payload);
+    http.end();
+    if (!c.useAgent && (code == 401 || code == 403)) tokens.clear();
+    return code;
+}
+static bool entityCreationTarget(const String& url, String& collection, String& id) {
+    int start = url.indexOf("/v2/entities/");
+    if (start < 0 || !url.endsWith("/attrs")) return false;
+    id = url.substring(start + 13, url.length() - 6);
+    if (!id.length() || id.length() > 128) return false;
+    for (size_t i = 0; i < id.length(); ++i) {
+        char c = id[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == ':')) return false;
+    }
+    collection = url.substring(0, start) + "/v2/entities";
+    return true;
+}
 static int sendJob(const NetworkJob& job, TokenManager& tokens) {
     const auto& c = job.config;
     if (WiFi.status() != WL_CONNECTED) return -1001;
     if (!c.useAgent && !c.skipToken && !tokens.ensureValidToken(c)) return -1002;
-    WiFiClient plain; WiFiClientSecure secure; HTTPClient http;
-    if (!beginHttp(http, plain, secure, c.useAgent ? c.agentUrl : c.serverUrl)) return -1003;
-    http.addHeader("Content-Type", "application/json");
-    if (!c.useAgent && !c.skipToken) http.addHeader("Authorization", "Bearer " + tokens.getToken());
     String payload = construirPayload(job.average.pm1_0, job.average.pm2_5, job.average.pm10);
-    int code = c.useAgent ? http.POST(payload) : http.PATCH(payload);
-    http.end();
-    if (!c.useAgent && (code == 401 || code == 403)) tokens.clear();
+    int code = sendRequest(c, tokens, c.useAgent ? c.agentUrl : c.serverUrl, payload, c.useAgent);
+    // One normal PATCH. Only an actual 404 allows one creation POST using the
+    // same real readings and identity. No GET probes or placeholder values.
+    if (!c.useAgent && code == 404) {
+        String collection, id;
+        if (entityCreationTarget(c.serverUrl, collection, id)) {
+            Serial.printf("[ENVIO] Entity missing; registering %s with measured PM values\n", id.c_str());
+            String entity = construirEntidadAire(id, job.average.pm1_0, job.average.pm2_5, job.average.pm10);
+            code = sendRequest(c, tokens, collection, entity, true);
+        }
+    }
     return code;
 }
 void Telemetry::run(void* context) {

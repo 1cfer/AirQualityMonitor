@@ -43,9 +43,11 @@ public:
     const char* c_str() const { return value.c_str(); }
     bool concat(const char* s) { value+=s;return true; }
     bool startsWith(const char* s) const { return value.rfind(s,0)==0; }
+    bool endsWith(const char* s) const { std::string suffix=s;return value.size()>=suffix.size()&&value.compare(value.size()-suffix.size(),suffix.size(),suffix)==0; }
     String substring(size_t a,size_t b=std::string::npos) const { return value.substr(a,b==std::string::npos?b:b-a); }
     long toInt() const {return value.empty()?0:std::stol(value);}
     int indexOf(char c) const { auto pos=value.find(c);return pos==std::string::npos?-1:int(pos); }
+    int indexOf(const char* s) const { auto pos=value.find(s);return pos==std::string::npos?-1:int(pos); }
     void replace(const String& from,const String& to) {size_t pos=0;while((pos=value.find(from.value,pos))!=std::string::npos){value.replace(pos,from.value.size(),to.value);pos+=to.value.size();}}
     char operator[](size_t i) const { return value[i]; }
     String& operator+=(const String& s) { value+=s.value; return *this; }

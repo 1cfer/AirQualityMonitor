@@ -1,6 +1,6 @@
 # TARS Air — Monitor de partículas ESP32
 
-Firmware `air-2.0.1`, para OLED SSD1306 de 128×64 y DFRobot SEN0460. Las lecturas, el botón y la pantalla continúan funcionando durante los envíos HTTP y la renovación de token.
+Firmware `air-2.0.2`, para OLED SSD1306 de 128×64 y DFRobot SEN0460. Las lecturas, el botón y la pantalla continúan funcionando durante los envíos HTTP y la renovación de token.
 
 La adaptación parte de AirQualityMonitor `ad2e966729484bbfcd78002a9edf2e34b3f3933e` y toma el modo desarrollador de TARS legacy 1.1.1 (`cd431c317d2fc669f05a1d15c6a4492e21a24b9c`). Detalles y validación: [REVISION.md](REVISION.md).
 
@@ -35,9 +35,19 @@ Si no hay conexión se crea `TARS-<hostname>` (máximo 32 caracteres), clave `12
 
 El panel/OTA local conserva el acceso sin autenticación de la base legacy y HTTPS conserva `setInsecure()`; la validación de certificados y el control de acceso no forman parte de esta revisión.
 
+## MOREHA: entidad nueva airq1
+
+La URL de datos es `https://api.moreha.com.co/v2/entities/airq1/attrs` y Keyrock se configura en `https://idm.moreha.com.co/oauth2/token`. El envío directo usa autenticación; el agente Flask queda desactivado.
+
+En la primera actualización a air-2.0.2 se guardan esos destinos una sola vez. Se conservan WiFi, intervalos y las credenciales Keyrock existentes. Una instalación nueva requiere introducir el secreto y la contraseña válidos desde el panel. Las modificaciones posteriores del destino se respetan.
+
+Cada entrega usa PATCH. Si devuelve 404, se intenta una sola creación mediante POST a `/v2/entities`, con ID `airq1`, tipo `AirQualityObserved` y las mismas lecturas reales de PM1.0, PM2.5 y PM10. Un 201 confirma la creación y la entrega; las siguientes entregas siguen por PATCH. No se crean mediciones de ejemplo ni se hacen consultas periódicas adicionales.
+
+La entidad sólo se considera registrada tras la confirmación del servidor. Si MOREHA responde 401/403, deben revisarse las credenciales o permisos de creación en la plataforma. Detalles: [MOREHA_airq1.md](docs/MOREHA_airq1.md).
+
 ## Binario listo para OTA
 
-[Descargar air-2.0.1 para ESP32-WROOM-DA](https://raw.githubusercontent.com/1cfer/AirQualityMonitor/main/firmware/AirQualityMonitor_air-2.0.1_ESP32DA.bin) · [Instrucciones y SHA-256](firmware/README.md)
+[Descargar air-2.0.2 para ESP32-WROOM-DA](https://raw.githubusercontent.com/1cfer/AirQualityMonitor/main/firmware/AirQualityMonitor_air-2.0.2_ESP32DA.bin) · [Instrucciones y SHA-256](firmware/README.md)
 
 Binario de aplicación para el panel OTA, compilado para `esp32:esp32:esp32da` y una partición de 1.310.720 bytes. Para otra placa o partición, compilar el sketch con su configuración.
 

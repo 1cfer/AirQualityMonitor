@@ -162,8 +162,51 @@ static void flowTests() {
     stateMachine.currentEvent=ButtonHandler::NONE;stateMachine.update();
     assert(std::string(stateMachine.getCurrentStateName())=="LECTURA");
 }
+static void migrationTests() {
+    Preferences p;p.begin("appconfig",false);p.clear();
+    p.putString("serverUrl","http://10.38.35.216:1026/v2/entities/tarsdev/attrs");
+    p.putString("clientSecret","saved-local-secret");p.putString("keyrockPass","saved-local-password");
+    p.putString("clientId","owner-client");p.putString("keyrockUser","owner@example.test");
+    p.putBool("isConfigured",true);p.putBool("skipToken",true);p.putBool("useAgent",true);p.end();
+    AppConfig migrated;migrated.begin();
+    assert(migrated.serverUrl=="https://api.moreha.com.co/v2/entities/airq1/attrs");
+    assert(migrated.tokenUrl=="https://idm.moreha.com.co/oauth2/token");
+    assert(!migrated.skipToken&&!migrated.useAgent&&migrated.isConfigured);
+    assert(migrated.clientSecret=="saved-local-secret"&&migrated.keyrockPass=="saved-local-password");
+    assert(migrated.clientId=="owner-client"&&migrated.keyrockUser=="owner@example.test");
+    migrated.serverUrl="https://api.moreha.com.co/v2/entities/airq2/attrs";migrated.save();
+    AppConfig reloaded;reloaded.begin();assert(reloaded.serverUrl==migrated.serverUrl);
+}
+static void registrationTests() {
+    appConfig.serverUrl="https://api.moreha.com.co/v2/entities/airq1/attrs";
+    appConfig.skipToken=false;appConfig.useAgent=false;WiFi.state=WL_CONNECTED;
+    HTTPClient::response="{\"access_token\":\"test-token\",\"expires_in\":3600}";
+    auto sent=telemetry.sent;HTTPClient::patchCode=404;HTTPClient::postCode=201;
+    sensorManager.read();unsigned posts=HTTPClient::posts;assert(telemetry.start());finishJob();
+    assert(telemetry.sent==sent+1&&telemetry.lastCode==201&&HTTPClient::posts==posts+2);
+    assert(HTTPClient::lastPostAuth=="Bearer test-token");
+    assert(HTTPClient::lastPostUrl=="https://api.moreha.com.co/v2/entities");
+    JsonDocument d;assert(!deserializeJson(d,HTTPClient::lastPostBody.c_str()));
+    assert(d["id"]=="airq1"&&d["type"]=="AirQualityObserved");
+    assert(d["pm2_5"]["value"].as<uint16_t>()==stateMachine.sensors.pm2_5);
+    // Subsequent ordinary delivery performs no registration or probe.
+    HTTPClient::patchCode=204;sensorManager.read();posts=HTTPClient::posts;
+    assert(telemetry.start());finishJob();assert(HTTPClient::posts==posts&&telemetry.lastCode==204);
+    // Forbidden creation is not acknowledged; all samples remain for retry.
+    HTTPClient::patchCode=404;HTTPClient::postCode=403;sensorManager.read();
+    int count=sensorManager.getSampleCount();assert(telemetry.start());finishJob();
+    assert(telemetry.lastCode==403&&sensorManager.getSampleCount()==count);
+    // A failed connection is not treated as a missing entity.
+    HTTPClient::patchCode=-1;HTTPClient::postCode=201;
+    unsigned entityPosts=HTTPClient::entityPosts;assert(telemetry.start());finishJob();
+    assert(telemetry.lastCode==-1&&HTTPClient::entityPosts==entityPosts&&sensorManager.getSampleCount()==count);
+    // Agent mode never performs Orion registration.
+    appConfig.useAgent=true;HTTPClient::postCode=404;posts=HTTPClient::posts;
+    assert(telemetry.start());finishJob();assert(HTTPClient::posts==posts+1&&telemetry.lastCode==404);
+    appConfig.useAgent=false;
+}
 int main() {
-    batchTests();buttonTests();tokenTests();sensorTests();assert(telemetry.begin());displayTests();panelTests();transitionTests();flowTests();
+    migrationTests();batchTests();buttonTests();tokenTests();sensorTests();assert(telemetry.begin());displayTests();panelTests();transitionTests();flowTests();registrationTests();
     std::cout<<"PASS: bounded batches, NVS, button, OAuth, sensor failures, 128x64 geometry, real worker thread, retry retention and developer transition"<<std::endl;
     std::quick_exit(0); // The embedded worker deliberately has firmware lifetime.
 }

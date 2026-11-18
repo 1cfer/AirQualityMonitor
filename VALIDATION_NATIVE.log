@@ -1,5 +1,9 @@
-PASS: native integration tests, production C++ including developer portal, real worker thread and ArduinoJson.
-No compiler warnings.
-PASS: node --check for panel JavaScript.
-PASS: git diff --check.
-Not tested on physical ESP32.
+air-2.0.2 native integration tests: PASS
+Compiler warnings: none
+Production C++ compiled with ArduinoJson and simulated hardware/HTTP, using a real worker thread.
+PASS: one-time MOREHA migration preserves saved credentials and later explicit URL changes.
+PASS: PATCH 404 -> authenticated entity creation with actual PM values, ID airq1 and type AirQualityObserved.
+PASS: normal PATCH performs no extra registration; 403 retains the samples; connection -1 does not create an entity.
+PASS: agent requests never create Orion entities.
+PASS: existing button, sensor, OLED geometry, retry, OAuth and developer-panel integration tests.
+No private MOREHA credentials used. Live entity registration is not yet confirmed.

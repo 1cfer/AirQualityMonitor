@@ -21,3 +21,18 @@ String construirPayload(uint16_t pm1_0, uint16_t pm2_5, uint16_t pm10) {
   serializeJson(doc, payload);
   return payload;
 }
+
+String construirEntidadAire(const String& id, uint16_t pm1_0, uint16_t pm2_5, uint16_t pm10) {
+  JsonDocument doc;
+  doc["id"] = id;
+  doc["type"] = "AirQualityObserved";
+  const char* names[] = {"pm1_0", "pm2_5", "pm10"};
+  const uint16_t values[] = {pm1_0, pm2_5, pm10};
+  for (unsigned i = 0; i < 3; ++i) {
+    doc[names[i]]["type"] = "Number";
+    doc[names[i]]["value"] = values[i];
+  }
+  String payload;
+  serializeJson(doc, payload);
+  return payload;
+}

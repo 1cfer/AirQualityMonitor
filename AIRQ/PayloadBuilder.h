@@ -4,5 +4,6 @@
 #include <Arduino.h>
 
 String construirPayload(uint16_t pm1_0, uint16_t pm2_5, uint16_t pm10);
+String construirEntidadAire(const String& id, uint16_t pm1_0, uint16_t pm2_5, uint16_t pm10);
 
 #endif

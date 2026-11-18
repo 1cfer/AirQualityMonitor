@@ -10,7 +10,7 @@ class AppConfig {
 
  public:
   // ===== CONFIGURACION DE ENVIO DE DATOS (ORION) =====
-  String serverUrl = "http://10.38.35.216:1026/v2/entities/tarsdev/attrs";
+  String serverUrl = "https://api.moreha.com.co/v2/entities/airq1/attrs";
   String hostname = "tars-new";  // Default genÃ©rico, se configura en primer boot
   unsigned long intervaloEnvio = 15000;
   unsigned long intervaloLectura = 2000;
@@ -18,11 +18,11 @@ class AppConfig {
   unsigned long tiempoInactividad = 180000;
 
   // ===== CREDENCIALES KEYROCK =====
-  String tokenUrl = "http://10.38.35.216:3001/oauth2/token";
-  String clientId = "d4eac061-b057-45ff-87b2-f317275c3f58";
-  String clientSecret = "f8e1bbf2-cbe9-44fb-a500-5bc6d60d17c7";
-  String keyrockUser = "Tarst_v1@gmail.com";
-  String keyrockPass = "123";
+  String tokenUrl = "https://idm.moreha.com.co/oauth2/token";
+  String clientId = "3b3153a0-6577-461a-be41-4113f500b896";
+  String clientSecret = "";
+  String keyrockUser = "tars@moreha.com";
+  String keyrockPass = "";
   bool skipToken = false;
 
   // ===== CONFIGURACION AGENTE =====
@@ -51,6 +51,20 @@ class AppConfig {
 
     agentUrl = prefs.getString("agentUrl", agentUrl.c_str());
     useAgent = prefs.getBool("useAgent", useAgent);
+    // Migrate the destination once, preserving saved credentials and WiFi.
+    // A later URL explicitly saved by the owner remains authoritative.
+    if (!prefs.getBool("morehaCloud", false)) {
+      serverUrl = "https://api.moreha.com.co/v2/entities/airq1/attrs";
+      tokenUrl = "https://idm.moreha.com.co/oauth2/token";
+      skipToken = false;
+      useAgent = false;
+      prefs.putString("serverUrl", serverUrl);
+      prefs.putString("tokenUrl", tokenUrl);
+      prefs.putBool("skipToken", false);
+      prefs.putBool("useAgent", false);
+      prefs.putBool("morehaCloud", true);
+      Serial.println("[Config] MOREHA: airq1, Keyrock on, direct delivery");
+    }
     prefs.end();
     intervaloEnvio = constrain(intervaloEnvio, 10000UL, 86400000UL);
     intervaloLectura = constrain(intervaloLectura, 500UL, 60000UL);
@@ -70,6 +84,7 @@ class AppConfig {
 
   void save() {
     prefs.begin("appconfig", false);
+    prefs.putBool("morehaCloud", true);
     prefs.putBool("isConfigured", true);  // Si se guarda config, ya estÃ¡ configurado
     prefs.putString("serverUrl", serverUrl.c_str());
     prefs.putString("hostname", hostname.c_str());
@@ -96,18 +111,18 @@ class AppConfig {
     prefs.begin("appconfig", false);
     prefs.clear();
     prefs.end();
-    serverUrl = "http://10.38.35.216:1026/v2/entities/tarsdev/attrs";
+    serverUrl = "https://api.moreha.com.co/v2/entities/airq1/attrs";
     hostname = "tars-new";
     intervaloEnvio = 15000;
     intervaloLectura = 2000;
     intervaloReintento = 20000;
     tiempoInactividad = 180000;
 
-    tokenUrl = "http://10.38.35.216:3001/oauth2/token";
-    clientId = "d4eac061-b057-45ff-87b2-f317275c3f58";
-    clientSecret = "f8e1bbf2-cbe9-44fb-a500-5bc6d60d17c7";
-    keyrockUser = "Tarst_v1@gmail.com";
-    keyrockPass = "123";
+    tokenUrl = "https://idm.moreha.com.co/oauth2/token";
+    clientId = "3b3153a0-6577-461a-be41-4113f500b896";
+    clientSecret = "";
+    keyrockUser = "tars@moreha.com";
+    keyrockPass = "";
     skipToken = false;
 
     agentUrl = "http://10.38.35.216:5000/v1/agent/tars1";

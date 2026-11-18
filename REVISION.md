@@ -59,3 +59,13 @@ El acceso local al panel y OTA sigue sin autenticación; el AP conserva la clave
 El boton del montaje real esta conectado a GPIO27, no GPIO4. Se cambia unicamente BUTTON_PIN a 27 y la identificacion de firmware a air-2.0.1. El sensor desconectado explicaba la ausencia de lecturas; no se cambian el lector I2C, sus tiempos ni la logica del boton. El fallo de envio reportado como HTTP:-1 se revisara por separado; esta revision conserva el transporte y Keyrock sin cambios.
 
 Compilacion air-2.0.1: salida 0, sin advertencias; flash 1186940 bytes, RAM estatica 53720 bytes. Se verificaron las 24 fuentes contra las copias compiladas. Binario de aplicacion OTA: 1187088 bytes. GPIO27 confirmado por el propietario; pendiente comprobar el boton en el equipo fisico tras cargarlo.
+
+## air-2.0.2 — destino MOREHA y registro de airq1
+
+Se configura la entidad nueva `airq1` de tipo AirQualityObserved en la API pública de MOREHA y Keyrock en su dominio IDM. Una migración NVS aplicada una sola vez cambia el destino antiguo y activa autenticación directa, conservando los secretos guardados, WiFi e intervalos. Los valores posteriores del panel no se sobrescriben. El botón permanece en GPIO27 y el sensor conserva el lector de air-2.0.1.
+
+Ante un PATCH 404 se añade un único POST de creación con las muestras reales de ese lote. Se confirma la entrega sólo con 2xx; en rechazo o fallo se recupera el lote. No se registra con valores ficticios ni se hacen comprobaciones periódicas adicionales.
+
+Las pruebas nativas cubren migración única y conservación de credenciales, creación autenticada tras 404, carga con ID/type/PM reales, PATCH normal sin registros extra, rechazo 403 sin pérdida de muestras, conexión -1 sin creación y agente sin registro Orion. No se han utilizado credenciales privadas ni se ha creado todavía la entidad desde el equipo de desarrollo; el ESP32 debe obtener la confirmación real de MOREHA.
+
+Compilacion air-2.0.2: salida 0, sin advertencias; flash 1188924 bytes, RAM estatica 53720 bytes. Se verificaron las 24 fuentes contra las copias compiladas. Binario de aplicacion OTA: 1189072 bytes. GPIO27 conservado; registro real de airq1 pendiente de la primera lectura autenticada del ESP32.
